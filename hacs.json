@@ -1,0 +1,6 @@
+{
+  "name": "Local Forecast",
+  "homeassistant": "2026.11.0",
+  "zip_release": true,
+  "filename": "local_forecast.zip"
+}

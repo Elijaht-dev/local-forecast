@@ -1,0 +1,14 @@
+refresh:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: local_forecast
+get_forecast:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: local_forecast

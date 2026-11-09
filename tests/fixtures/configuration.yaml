@@ -1,0 +1,42 @@
+homeassistant:
+  name: Local Forecast QA
+  latitude: 48.8566
+  longitude: 2.3522
+  elevation: 35
+  time_zone: Europe/Paris
+  country: FR
+  unit_system: metric
+
+default_config:
+
+recorder:
+  exclude:
+    entities:
+      - sensor.qa_hourly_only
+
+template:
+  - sensor:
+      - name: QA Hourly Only
+        unique_id: qa_hourly_only
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ 250 }}"
+      - name: QA Solar Power
+        unique_id: qa_solar_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ 350 }}"
+      - name: QA Solar Energy
+        unique_id: qa_solar_energy
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: "{{ 400 }}"
+      - name: QA Outdoor Temperature
+        unique_id: qa_outdoor_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ 20 }}"

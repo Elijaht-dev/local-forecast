@@ -1,0 +1,14 @@
+{
+  "domain": "local_forecast",
+  "name": "Local Forecast",
+  "categories": ["energy"],
+  "codeowners": ["@Elijaht-dev"],
+  "config_flow": true,
+  "dependencies": ["http", "panel_custom", "recorder", "websocket_api"],
+  "documentation": "https://github.com/Elijaht-dev/local-forecast",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Elijaht-dev/local-forecast/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

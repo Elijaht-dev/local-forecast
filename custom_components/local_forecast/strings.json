@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Local Forecast",
+        "description": "Enter the local engine URL and its pairing token. If you installed the Home Assistant app, you can also accept its discovery notification.",
+        "data": {"url": "Engine URL", "token": "Pairing token"}
+      },
+      "reconfigure": {
+        "title": "Update engine connection",
+        "data": {"url": "Engine URL", "token": "Pairing token"}
+      },
+      "confirm_app": {
+        "title": "Connect the Local Forecast app",
+        "description": "Use the engine discovered on this Home Assistant instance."
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the local engine.",
+      "invalid_auth": "The engine rejected the pairing token.",
+      "different_engine": "This URL points to a different engine installation."
+    },
+    "abort": {
+      "already_configured": "This engine is already paired.",
+      "reconfigure_successful": "The connection was updated.",
+      "manage_in_lab": "Open Forecast Lab to change this project.",
+      "cannot_connect": "The Local Forecast engine did not respond.",
+      "invalid_discovery": "The app discovery message was incomplete."
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh forecast",
+      "description": "Queue a new forecast for an active Local Forecast project.",
+      "fields": {"entity_id": {"name": "Forecast sensor", "description": "A sensor belonging to the forecast project."}}
+    },
+    "get_forecast": {
+      "name": "Get forecast",
+      "description": "Return the latest usable forecast and its timestamps.",
+      "fields": {"entity_id": {"name": "Forecast sensor", "description": "A sensor belonging to the forecast project."}}
+    }
+  }
+}

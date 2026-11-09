@@ -1,0 +1,34 @@
+name: Integration CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run recorder regressions in the minimum HA version
+        run: |
+          docker run --rm --entrypoint python -e PYTHONPATH=/repo -v "$PWD:/repo:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.11.0 -m unittest discover -v -s /repo/tests
+      - run: python scripts/package.py
+      - uses: home-assistant/actions/hassfest@master
+  marketplace:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: false
