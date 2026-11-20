@@ -2,7 +2,7 @@
 
 DOMAIN = "local_forecast"
 PANEL = "forecast-lab"
-VERSION = "0.1.0"
+VERSION = "0.1.1-beta.1"
 BASELINES = ("persistence", "previous-day", "previous-week")
 MODELS = (
     *BASELINES,

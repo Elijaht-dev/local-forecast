@@ -4,13 +4,16 @@ Forecast recorded numeric entities on your own hardware. **Forecast Lab** lets y
 
 ![Forecast Lab with a recorded test series and model comparison](docs/forecast-lab.jpg)
 
-## Setup
+## Install the public beta
 
-1. Start the [Local Forecast engine](https://github.com/Elijaht-dev/local-forecast-engine) as an HA app or in Docker.
-2. On Home Assistant 2026.11 or newer, install the integration from its custom repository in **Settings → Marketplace** and restart when prompted. For a local build, extract `local_forecast.zip` into `config/custom_components/local_forecast/`.
-3. In **Settings → Devices & services**, accept the discovered engine or add **Local Forecast** and enter the engine URL and pairing token.
-4. Open **Forecast Lab**. Pick a numeric target, preview its history and save the project. Install Timestral-5M from the model selector or choose a baseline to try the workflow immediately.
-5. Run a forecast or compare models, then use **Publish forecast** to enable updates. Install the [Local Forecast Card](https://github.com/Elijaht-dev/local-forecast-card) to plot the published series.
+Use Home Assistant 2026.11 or newer and an administrator account. The integration provides Forecast Lab and reads the history of the entities you select. The engine runs the models on your hardware.
+
+1. **Start the engine.** On Home Assistant OS, open **Settings → Apps → App store → Repositories** and add `https://github.com/Elijaht-dev/local-forecast-engine#ha-beta`, including the branch suffix. Install **Local Forecast Engine** and start it. Supervisor builds the app on the first install. For Home Assistant Container, build the engine with Docker Compose, put it on a network shared with Home Assistant, and use its service name when pairing. [Standalone Docker setup](https://github.com/Elijaht-dev/local-forecast-engine/blob/v0.1.0/README.md#standalone-docker)
+2. **Install the integration.** In **Settings → Marketplace**, add `https://github.com/Elijaht-dev/local-forecast` as a custom integration repository, enable **Pre-release**, and select the beta. For a manual install, extract the contents of the release asset `local_forecast.zip` directly into `config/custom_components/local_forecast/`. Restart Home Assistant. [Beta releases and ZIP downloads](https://github.com/Elijaht-dev/local-forecast/releases)
+3. **Pair the engine.** Open **Settings → Devices & services** and accept the discovered **Local Forecast** integration. For a Docker engine, add **Local Forecast** manually. Enter its URL (for example, `http://local-forecast:8099` on a shared Docker network) and the token printed by `docker compose exec local-forecast cat /data/api-token`.
+4. **Run your first forecast.** Open **Forecast Lab** in the sidebar, select a recorded numeric entity, preview its history and save the project. Select **Persistence** and run a forecast immediately. To try a neural model, select **Timestral-5M**, install it in the panel and run it on the same project. **Publish forecast** enables scheduled updates and creates sensors you can add to a dashboard using Home Assistant's Tile card.
+
+On Raspberry Pi 4, use the built-in baselines with engine v0.1.0. Its PyTorch build cannot run the neural models on that processor. [Engine compatibility notes](https://github.com/Elijaht-dev/local-forecast-engine/releases/tag/v0.1.0)
 
 ## Data and models
 

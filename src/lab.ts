@@ -269,7 +269,11 @@ export class ForecastLab extends LitElement {
   }
 
   private get yaml(): string {
-    return `type: custom:local-forecast-card\nentity: ${this.selection?.entity_id ?? ""}\nhorizon_hours: ${this.draft.horizon_hours}\nshow_uncertainty: true`;
+    const entity = this.selection?.entity_id ?? "";
+    if (customElements.get("local-forecast-card")) {
+      return `type: custom:local-forecast-card\nentity: ${entity}\nhorizon_hours: ${this.draft.horizon_hours}\nshow_uncertainty: true`;
+    }
+    return `type: tile\nentity: ${entity}`;
   }
 
   private copy(): Promise<void> {
@@ -402,7 +406,7 @@ export class ForecastLab extends LitElement {
             <p class="muted">${selected.settings.enabled ? `Updates every ${selected.settings.refresh_minutes} minutes.` : "Enable updates to use sensors and the Energy dashboard."}</p>
           </div><button ?disabled=${disabled || this.dirty} @click=${this.publish}>${selected.settings.enabled ? "Pause" : "Publish forecast"}</button></section>` : nothing}
           ${selected?.entity_id ? html`<section class="box">
-            <details><summary>Dashboard card</summary><p class="hint">Install the Local Forecast Card from Marketplace, then add this YAML to a dashboard.</p>
+            <details><summary>Dashboard card</summary><p class="hint">Add this YAML to a dashboard to show your published forecast sensor.</p>
               <button @click=${this.copy} ?disabled=${disabled}>Copy card YAML</button><pre class="card-yaml">${this.yaml}</pre>
             </details>
           </section>` : nothing}

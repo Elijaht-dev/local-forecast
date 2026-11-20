@@ -3,6 +3,7 @@
  * Run only with tests/fixtures/configuration.yaml and a running test engine.
  */
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -10,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const base = new URL(process.env.LF_TEST_HA_URL ?? "http://127.0.0.1:18123/");
 const stateDir = process.env.LF_TEST_STATE_DIR ?? ".lf-e2e";
 const username = "forecast_qa";
-const password = "LocalForecastQASmoke123!";
+const password = randomBytes(24).toString("base64url");
 const engineUrl = process.env.LF_TEST_ENGINE_URL ?? "http://local-forecast-engine-qa:8099";
 const engineToken = process.env.LF_TOKEN;
 const authFile = join(stateDir, "ha-auth.json");
@@ -151,7 +152,7 @@ async function publish(lab, id) {
 async function previewHistory(lab, project) {
   for (let attempt = 0; attempt < 25; attempt += 1) {
     const preview = await lab("preview", {project});
-    if (preview.coverage.available >= 620) return preview;
+    if (preview.coverage.available >= 620 && preview.inputs.every(input => input.history > 0)) return preview;
     await sleep(600);
   }
   throw new Error(`Expected imported hourly statistics for ${project.target}`);
@@ -183,6 +184,13 @@ try {
   }
   const engine = listing?.engines[0]?.id;
   assert(engine, "The engine config entry must load");
+  const panel = (await send("get_panels"))["forecast-lab"];
+  assert(panel?.require_admin, "Forecast Lab must be registered in the admin sidebar");
+  const moduleUrl = panel.config._panel_custom.module_url;
+  assert.equal(new URL(moduleUrl, base).origin, base.origin);
+  const moduleResponse = await fetch(new URL(moduleUrl, base));
+  assert.equal(moduleResponse.status, 200, "The installed release must serve the panel module");
+  assert((await moduleResponse.text()).includes("local-forecast-lab"));
   await seed(send, access);
   const settings = {
     name: "Solar production", target: "sensor.qa_solar_power", model: "timestral-5m",
