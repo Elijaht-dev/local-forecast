@@ -1,6 +1,7 @@
 export interface Hass {
   states: Record<string, { state: string; attributes: Record<string, unknown> }>;
   callWS<T>(command: Record<string, unknown>): Promise<T>;
+  user?: { id: string };
   language?: string;
   themes?: { darkMode?: boolean };
 }

@@ -3,7 +3,7 @@ import "./chart";
 import "./settings";
 import { controls } from "./styles";
 import {
-  errorMessage, initialSettings, type Evaluation, type Forecast, type Hass, type Job, type LabList,
+  entityName, errorMessage, initialSettings, type Evaluation, type Forecast, type Hass, type Job, type LabList,
   type Model, type Preview, type Project, type Scores, type Settings,
 } from "./types";
 
@@ -27,11 +27,10 @@ export class ForecastLab extends LitElement {
     :host { display: block; min-height: 100%; background: var(--primary-background-color, #f4f7fa); }
     header { display: flex; align-items: center; min-height: 56px; gap: 14px; padding: 10px 20px; background: var(--lf-surface); border-bottom: 1px solid var(--lf-border); }
     h1 { font-size: 24px; letter-spacing: -0.02em; }
-    .projects { padding: 14px 24px 16px; border-bottom: 1px solid var(--lf-border); }
+    .projects { display: flex; flex-wrap: wrap; align-items: start; gap: 10px 16px; padding: 12px 20px 14px; border-bottom: 1px solid var(--lf-border); }
+    .projects local-forecast-picker { flex: 1 1 220px; max-width: 36rem; }
+    .projects button { margin-top: 20px; }
     .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; }
-    .project-row { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
-    .project-row button { flex: 1 1 180px; justify-content: start; color: inherit; border-color: var(--lf-border); }
-    .project-row button[aria-pressed=true] { background: color-mix(in srgb, var(--lf-accent) 23%, var(--lf-surface)); border-color: transparent; }
     main { padding: 16px 18px 28px; display: grid; gap: 20px; grid-template-columns: minmax(0, 2.13fr) minmax(295px, 1fr); align-items: start; }
     .workspace { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .project-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -61,6 +60,11 @@ export class ForecastLab extends LitElement {
       header, .projects { padding-inline: 14px; }
       .project-title h2 { font-size: 22px; }
     }
+    @media (max-width: 480px) {
+      .projects { align-items: end; }
+      .projects local-forecast-picker { flex-basis: 100%; max-width: none; }
+      .projects button { margin-top: 0; }
+    }
   `];
 
   hass?: Hass;
@@ -82,6 +86,7 @@ export class ForecastLab extends LitElement {
   private loaded = false;
   private quarterHourAvailable?: boolean;
   private timer?: ReturnType<typeof setInterval>;
+  private duplicateProjectNames = new Set<string>();
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -95,6 +100,31 @@ export class ForecastLab extends LitElement {
 
   protected updated(changed: PropertyValues): void {
     if (changed.has("hass") && this.hass && !this.loaded && !this.busy) void this.load();
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("listing")) {
+      const seen = new Set<string>();
+      this.duplicateProjectNames.clear();
+      for (const { settings: { name } } of this.listing.projects) {
+        if (seen.has(name)) this.duplicateProjectNames.add(name);
+        seen.add(name);
+      }
+    }
+  }
+
+  private projectChoice(project: Project) {
+    const { name, target } = project.settings;
+    const detail = new Set([entityName(this.hass, target), target]);
+    if (this.listing.engines.length > 1) {
+      detail.add(this.listing.engines.find(engine => engine.id === project.engine_entry_id)?.name ?? project.engine_entry_id);
+    }
+    if (this.duplicateProjectNames.has(name)) detail.add(project.entity_id ?? project.id);
+    return { id: project.id, name, detail: [...detail].join(" · ") };
+  }
+
+  private get workspaceKey(): string {
+    return `local-forecast:workspace:${this.hass?.user?.id ?? ""}`;
   }
 
   private call<T>(operation: string, extra: Record<string, unknown> = {},
@@ -126,7 +156,10 @@ export class ForecastLab extends LitElement {
     this.loaded = true;
     await this.perform("Loading projects", async () => {
       this.listing = await this.call<LabList>("list");
-      await this.select(this.listing.projects[0]);
+      let previous: string | null = null;
+      try { previous = sessionStorage.getItem(this.workspaceKey); } catch { /* Storage is optional. */ }
+      const project = previous === null ? this.listing.projects[0] : this.listing.projects.find(item => item.id === previous);
+      await this.select(project);
     });
   }
 
@@ -147,6 +180,7 @@ export class ForecastLab extends LitElement {
         this.evaluation = result ?? undefined;
       })] : []),
     ]);
+    try { sessionStorage.setItem(this.workspaceKey, project?.id ?? "quick"); } catch { /* Storage is optional. */ }
   }
 
   private async loadAccuracy(): Promise<void> {
@@ -374,15 +408,17 @@ export class ForecastLab extends LitElement {
     const installed = this.models.some(model => model.id === this.modelId && model.installed);
     return html`
       <header><ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button><h1>Forecast Lab</h1></header>
-      <section class="projects">
-        <div class="toolbar"><h3>Projects</h3><button ?disabled=${disabled || !this.listing.engines.length}
-          @click=${() => this.perform("Opening quick analysis", () => this.select())}><ha-icon icon="mdi:plus"></ha-icon>Quick analysis</button></div>
-        ${this.listing.projects.length ? html`<div class="project-row">${this.listing.projects.map(project =>
-          html`<button aria-pressed=${selected?.id === project.id} ?disabled=${disabled}
-            @click=${() => this.perform("Opening project", () => this.select(project))}>
-            <ha-icon icon=${project.settings.solar ? "mdi:white-balance-sunny" : "mdi:chart-line"}></ha-icon>
-            ${project.settings.name}</button>`)}</div>` : nothing}
-      </section>
+      ${this.listing.projects.length ? html`<nav class="projects" aria-label="Forecast workspace">
+        <local-forecast-picker label="Saved project" .selection=${selected ? this.projectChoice(selected) : undefined}
+          .getChoices=${() => this.listing.projects.map(project => this.projectChoice(project))}
+          .clearable=${false} .disabled=${disabled} @selection-change=${(event: CustomEvent<string>) => {
+            const project = this.listing.projects.find(item => item.id === event.detail);
+            if (project && project.id !== selected?.id) void this.perform("Opening project", () => this.select(project));
+          }}></local-forecast-picker>
+        <button ?disabled=${disabled || !selected} @click=${() => this.perform("Opening quick analysis", () => this.select())}>
+          <ha-icon icon="mdi:flask-outline"></ha-icon>Quick analysis
+        </button>
+      </nav>` : nothing}
       <main class=${selected ? "" : "draft"}>
         ${!this.listing.engines.length ? html`<div class="box full">
           <h2>Connect a forecasting engine</h2>

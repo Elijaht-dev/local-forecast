@@ -15,6 +15,8 @@ Use Home Assistant 2026.11 or newer and an administrator account. The integratio
 
 On Raspberry Pi 4, use the built-in baselines with engine v0.1.0. Its PyTorch build cannot run the neural models on that processor. [Engine compatibility notes](https://github.com/Elijaht-dev/local-forecast-engine/releases/tag/v0.1.0)
 
+Use **Saved project** to search by project name, target name, or entity ID. The Lab remembers your workspace when you reload the same browser tab.
+
 ## Data and models
 
 The default forecast is hourly for 48 hours, refreshed every hour, from up to 28 days of history. Preview the target's history to enable 15-minute forecasts when Recorder has at least 32 usable 15-minute observations in the selected window. Eligible sensors can use hourly recorder statistics for older periods. Historical gaps stay missing. A cumulative meter forecasts the energy, water, or other increment per interval.
