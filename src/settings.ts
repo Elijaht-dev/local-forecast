@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing } from "lit";
 import "./search-picker";
+import { modelOptions } from "./model-options";
 import { controls } from "./styles";
 import { entityChoice, entityChoices, initialSettings, type Hass, type Input, type Model, type Named, type Settings } from "./types";
 
@@ -112,8 +113,6 @@ export class ProjectSettings extends LitElement {
     const project = this.project;
     const intervals: [string, string][] = [["60", "1 hour"]];
     if (this.quarterHourAvailable || project.step_minutes === 15) intervals.push(["15", "15 minutes"]);
-    const models: [string, string][] = this.models.map(model => [model.id, model.label]);
-    if (!models.some(([id]) => id === project.model)) models.unshift([project.model, project.model]);
     const addInput = () => this.updateSetting("inputs", [...project.inputs, {
       kind: "history", entity: "", history_entity: "", entry_id: "", attribute: "", field: "temperature",
       timestamp_key: "datetime", value_key: "value",
@@ -125,7 +124,10 @@ export class ProjectSettings extends LitElement {
         this.engines.map(e => [e.id, e.name]), id => this.emit("engine-change", id)) : nothing}
       ${this.saved ? this.field("Name", project.name, name => this.updateSetting("name", name), true) : nothing}
       ${this.entity("Target entity", project.target, "target", target => this.updateSetting("target", target))}
-      ${this.options("Model", project.model, models, model => this.updateSetting("model", model))}
+      <label>${this.saved ? "Project model" : "Model"}<select .value=${project.model}
+        @change=${(event: Event) => this.updateSetting("model", (event.target as HTMLSelectElement).value)}>
+        ${modelOptions(this.models, project.model)}
+      </select></label>
       <div class="pair">
         ${this.options("Interval", String(project.step_minutes), intervals,
           step => this.updateSetting("step_minutes", Number(step)))}

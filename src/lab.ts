@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import "./chart";
 import "./settings";
+import { modelOptions } from "./model-options";
 import { controls } from "./styles";
 import {
   entityName, errorMessage, initialSettings, type Evaluation, type Forecast, type Hass, type Job, type LabList,
@@ -163,8 +164,13 @@ export class ForecastLab extends LitElement {
     });
   }
 
-  private async loadModels(): Promise<void> {
+  private async loadModels(preferInstalled = false): Promise<void> {
     this.models = this.engineId ? await this.call<Model[]>("models") : [];
+    if (preferInstalled && !this.models.some(model => model.id === this.draft.model && model.installed)) {
+      const ready = this.models.find(model => model.installed && !model.baseline)
+        ?? this.models.find(model => model.installed);
+      if (ready) this.changeDraft({ ...this.draft, model: ready.id });
+    }
   }
 
   private async select(project?: Project): Promise<void> {
@@ -175,7 +181,7 @@ export class ForecastLab extends LitElement {
     this.preview = this.forecast = this.evaluation = this.accuracy = undefined;
     this.quarterHourAvailable = undefined;
     await Promise.all([
-      this.loadModels(),
+      this.loadModels(!project),
       ...(project ? [this.loadAccuracy(), this.call<Evaluation | null>("evaluation").then(result => {
         this.evaluation = result ?? undefined;
       })] : []),
@@ -345,7 +351,7 @@ export class ForecastLab extends LitElement {
           this.modelId = (event.target as HTMLSelectElement).value;
           if (!this.selection) this.changeDraft({ ...this.draft, model: this.modelId });
         }}>
-          ${this.models.map(item => html`<option value=${item.id} ?selected=${item.id === this.modelId}>${item.label}</option>`)}
+          ${modelOptions(this.models, this.modelId)}
         </select></label>
         <div><span class="label">Data coverage</span>
           ${coverage ? `${coverage.available} / ${coverage.requested} intervals (${ratio}%)` : "Awaiting history"}
@@ -469,7 +475,7 @@ export class ForecastLab extends LitElement {
           @engine-change=${(event: CustomEvent<string>) => this.perform("Connecting to engine", async () => {
             this.engineId = event.detail;
             this.preview = this.forecast = this.evaluation = undefined;
-            await this.loadModels();
+            await this.loadModels(true);
           })}
           @save-project=${this.save} @preview-project=${this.previewHistory} @delete-project=${this.removeProject}></local-forecast-settings>`}
       </main>

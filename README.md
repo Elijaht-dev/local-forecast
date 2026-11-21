@@ -23,6 +23,8 @@ The default forecast is hourly for 48 hours, refreshed every hour, from up to 28
 
 Use a recorded numeric entity or binary state as an input. For inputs with future values, choose HA hourly weather, an existing Forecast.Solar configuration, or a numeric timestamp/value array in an entity attribute. Choose a historical counterpart for Forecast.Solar or attribute arrays. For weather, the matching recorded attribute is used when available. Use the preview to see which inputs have usable coverage.
 
+The model pickers show installed neural models first, followed by built-in baselines and models available to download. Quick analysis starts with a model that is ready to run. Saved projects keep their configured model.
+
 Models run in the paired engine and use only selected input series. The engine archives predictions at issue time and compares them with later observations. Historical tests reuse archived forecasts where available and label historical-only tests. Compare models over the same observed intervals and choose the model to publish in project settings.
 
 ## Solar
