@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
+import "./search-picker";
 import { controls } from "./styles";
-import { initialSettings, numericEntities, type Hass, type Input, type Model, type Named, type Settings } from "./types";
+import { entityChoice, entityChoices, initialSettings, type Hass, type Input, type Model, type Named, type Settings } from "./types";
 
 const inputLabels: Record<Input["kind"], string> = {
   history: "Recorded entity", weather: "HA weather forecast", solar: "Forecast.Solar", attribute: "Forecast array attribute",
@@ -46,9 +47,16 @@ export class ProjectSettings extends LitElement {
     this.updateSetting("inputs", this.project.inputs.map((item, i) => i === index ? { ...item, ...patch } : item));
   }
 
-  private field(label: string, value: string, change: (value: string) => void, list?: string, required = false) {
-    return html`<label>${label}<input .value=${value} list=${list ?? nothing} ?required=${required}
+  private field(label: string, value: string, change: (value: string) => void, required = false) {
+    return html`<label>${label}<input .value=${value} ?required=${required}
       @input=${(event: Event) => change((event.target as HTMLInputElement).value)}></label>`;
+  }
+
+  private entity(label: string, id: string, kind: "target" | Exclude<Input["kind"], "solar">,
+    change: (id: string) => void, required = true) {
+    return html`<local-forecast-picker .label=${label} .selection=${id ? entityChoice(this.hass, id) : undefined}
+      .getChoices=${() => entityChoices(this.hass, kind)} .required=${required} .disabled=${this.busy}
+      @selection-change=${(event: CustomEvent<string>) => change(event.detail)}></local-forecast-picker>`;
   }
 
   private options(label: string, value: string, choices: readonly (readonly [string, string])[], change: (value: string) => void) {
@@ -78,7 +86,7 @@ export class ProjectSettings extends LitElement {
       ${item.kind === "solar" ?
         this.options(label, item.entry_id, [["", "Select an entry"], ...this.solarEntries.map(e => [e.id, e.name] as const)],
           entry_id => patch({ entry_id })) :
-        this.field(label, item.entity, entity => patch({ entity }), item.kind === "weather" ? "weather" : "inputs", true)}
+        this.entity(label, item.entity, item.kind, entity => patch({ entity }))}
       ${item.kind === "weather" ? this.options("Forecast field", item.field, [
         ["temperature", "Temperature"], ["cloud_coverage", "Cloud coverage"], ["humidity", "Humidity"],
         ["precipitation", "Precipitation"], ["precipitation_probability", "Precipitation probability"],
@@ -87,13 +95,13 @@ export class ProjectSettings extends LitElement {
       ${item.kind === "solar" ? this.options("Forecast field", item.field, [["watts", "Power (W)"], ["wh_period", "Energy (Wh)"]],
         field => patch({ field })) : nothing}
       ${item.kind === "attribute" ? html`
-        ${this.field("Array attribute", item.attribute, attribute => patch({ attribute }), undefined, true)}
+        ${this.field("Array attribute", item.attribute, attribute => patch({ attribute }), true)}
         <div class="pair">
-          ${this.field("Timestamp key", item.timestamp_key, timestamp_key => patch({ timestamp_key }), undefined, true)}
-          ${this.field("Value key", item.value_key, value_key => patch({ value_key }), undefined, true)}
+          ${this.field("Timestamp key", item.timestamp_key, timestamp_key => patch({ timestamp_key }), true)}
+          ${this.field("Value key", item.value_key, value_key => patch({ value_key }), true)}
         </div>` : nothing}
       ${item.kind !== "history" ? html`
-        ${this.field("Historical counterpart", item.history_entity, history_entity => patch({ history_entity }), "inputs")}
+        ${this.entity("Historical counterpart", item.history_entity, "history", history_entity => patch({ history_entity }), false)}
         <small>${item.kind === "weather" ? "Uses the recorded weather attribute if empty." : "Choose a recorded entity in matching units."}</small>
       ` : nothing}
     </section>`;
@@ -101,7 +109,6 @@ export class ProjectSettings extends LitElement {
 
   render() {
     const project = this.project;
-    const entities = numericEntities(this.hass, true);
     const intervals: [string, string][] = [["60", "1 hour"]];
     if (this.quarterHourAvailable || project.step_minutes === 15) intervals.push(["15", "15 minutes"]);
     const models: [string, string][] = this.models.map(model => [model.id, model.label]);
@@ -114,8 +121,8 @@ export class ProjectSettings extends LitElement {
       <h2>Project settings</h2>
       ${!this.saved && this.engines.length > 1 ? this.options("Engine", this.engineId,
         this.engines.map(e => [e.id, e.name]), id => this.emit("engine-change", id)) : nothing}
-      ${this.field("Name", project.name, name => this.updateSetting("name", name), undefined, true)}
-      ${this.field("Target entity", project.target, target => this.updateSetting("target", target), "targets", true)}
+      ${this.field("Name", project.name, name => this.updateSetting("name", name), true)}
+      ${this.entity("Target entity", project.target, "target", target => this.updateSetting("target", target))}
       ${this.options("Model", project.model, models, model => this.updateSetting("model", model))}
       <div class="pair">
         ${this.options("Interval", String(project.step_minutes), intervals,
@@ -148,9 +155,6 @@ export class ProjectSettings extends LitElement {
         <button type="button" ?disabled=${this.busy || !project.target} @click=${() => this.emit("preview-project")}>Preview history</button>
         ${this.saved ? html`<button type="button" ?disabled=${this.busy} @click=${() => this.emit("delete-project")}>Delete project</button>` : nothing}
       </div>
-      <datalist id="targets">${numericEntities(this.hass).map(id => html`<option value=${id}></option>`)}</datalist>
-      <datalist id="inputs">${entities.map(id => html`<option value=${id}></option>`)}</datalist>
-      <datalist id="weather">${Object.keys(this.hass?.states ?? {}).filter(id => id.startsWith("weather.")).map(id => html`<option value=${id}></option>`)}</datalist>
     </form>`;
   }
 }

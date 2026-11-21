@@ -126,11 +126,25 @@ export function errorMessage(error: unknown): string {
   return String(error);
 }
 
-export function numericEntities(hass?: Hass, allowBinary = false): string[] {
-  return Object.entries(hass?.states ?? {}).filter(([id, {state, attributes}]) =>
-    attributes.forecast_status === undefined && (
-      (state.trim() !== "" && Number.isFinite(Number(state))) ||
-      (allowBinary && ["on", "off"].includes(state)) ||
-      (id.startsWith("sensor.") && ["unknown", "unavailable"].includes(state))
-    )).map(([id]) => id).sort();
+export function entityName(hass: Hass | undefined, id: string): string {
+  const name = hass?.states[id]?.attributes.friendly_name;
+  return typeof name === "string" && name.trim() ? name : id;
+}
+
+export function entityChoice(hass: Hass | undefined, id: string) {
+  const name = entityName(hass, id);
+  return { id, name, detail: name === id ? undefined : id };
+}
+
+export function entityChoices(hass: Hass | undefined, kind: "target" | "history" | "weather" | "attribute") {
+  return Object.entries(hass?.states ?? {}).filter(([id, { state, attributes }]) => {
+    if (attributes.forecast_status !== undefined) return false;
+    if (kind === "weather") return id.startsWith("weather.");
+    if (kind === "attribute") return true;
+    const binary = id.startsWith("binary_sensor.");
+    if (kind === "target" && binary) return false;
+    if (state === "unknown" || state === "unavailable") return id.startsWith("sensor.") || binary;
+    return (state.trim() !== "" && Number.isFinite(Number(state))) ||
+      (kind === "history" && (state === "on" || state === "off"));
+  }).map(([id]) => entityChoice(hass, id));
 }
