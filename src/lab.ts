@@ -97,10 +97,11 @@ export class ForecastLab extends LitElement {
     if (changed.has("hass") && this.hass && !this.loaded && !this.busy) void this.load();
   }
 
-  private call<T>(operation: string, extra: Record<string, unknown> = {}): Promise<T> {
+  private call<T>(operation: string, extra: Record<string, unknown> = {},
+    projectId: string | null = this.selection?.id ?? null): Promise<T> {
     return this.hass!.callWS<T>({
       type: "local_forecast/lab", operation,
-      ...(this.selection ? { project_id: this.selection.id } : {}),
+      ...(projectId ? { project_id: projectId } : {}),
       ...(this.engineId ? { engine_entry_id: this.engineId } : {}),
       ...extra,
     });
@@ -187,7 +188,7 @@ export class ForecastLab extends LitElement {
   private previewHistory(): Promise<void> {
     return this.perform("Reading history", async () => {
       const settings = this.draft;
-      const preview = await this.call<Preview>("preview", { project: { ...settings, name: settings.name || "Preview" } });
+      const preview = await this.call<Preview>("preview", { project: settings });
       if (settings !== this.draft) return;
       this.preview = preview;
       this.quarterHourAvailable = preview.quarter_hour_available;
@@ -198,10 +199,19 @@ export class ForecastLab extends LitElement {
   private changeDraft(next: Settings): void {
     if ((["target", "mode", "solar", "history_days"] as const).some(key => this.draft[key] !== next[key])) {
       this.quarterHourAvailable = undefined;
-      this.preview = this.forecast = undefined;
       next = { ...next, step_minutes: 60 };
     }
+    if ((["target", "mode", "solar", "history_days", "step_minutes", "inputs", "horizon_hours"] as const)
+      .some(key => this.draft[key] !== next[key])) {
+      this.preview = this.forecast = this.evaluation = undefined;
+    }
+    if (this.draft.model !== next.model) this.modelId = next.model;
     this.draft = next;
+  }
+
+  private analyze<T>(operation: "run" | "backtest", options: Record<string, unknown>): Promise<Job<T>> {
+    return this.selection && !this.dirty ? this.call(operation, options)
+      : this.call(operation, { ...options, project: this.draft }, null);
   }
 
   private async waitFor<T>(initial: Job<T>): Promise<T> {
@@ -218,7 +228,7 @@ export class ForecastLab extends LitElement {
 
   private run(): Promise<void> {
     return this.perform("Running forecast", async () => {
-      const job = await this.call<Job<Forecast>>("run", { model: this.modelId });
+      const job = await this.analyze<Forecast>("run", { model: this.modelId });
       this.preview = job.preview;
       this.forecast = await this.waitFor(job);
     });
@@ -232,9 +242,9 @@ export class ForecastLab extends LitElement {
           ? [withInputs, { model: model.id, use_inputs: false }]
           : [withInputs];
       });
-      const job = await this.call<Job<Evaluation>>("backtest", { variants });
+      const job = await this.analyze<Evaluation>("backtest", { variants });
       this.evaluation = await this.waitFor(job);
-      await this.loadAccuracy();
+      if (this.selection && !this.dirty) await this.loadAccuracy();
     });
   }
 
@@ -289,7 +299,7 @@ export class ForecastLab extends LitElement {
 
   private chart() {
     const model = this.models.find(item => item.id === this.modelId);
-    const forecast = this.forecast ?? (this.preview ? undefined : this.selection?.forecast ?? undefined);
+    const forecast = this.forecast ?? (this.preview || this.dirty ? undefined : this.selection?.forecast ?? undefined);
     const data = forecast ?? this.preview;
     const coverage = data?.coverage;
     const unit = data?.unit || "";
@@ -297,8 +307,10 @@ export class ForecastLab extends LitElement {
     return html`<section class="box chart">
       <h3>Forecast</h3>
       <div class="controls">
-        <label>Model<select aria-label="Preview model" .value=${this.modelId} @change=${(event: Event) =>
-          { this.modelId = (event.target as HTMLSelectElement).value; }}>
+        <label>Forecast model<select aria-label="Preview model" ?disabled=${!!this.busy} .value=${this.modelId} @change=${(event: Event) => {
+          this.modelId = (event.target as HTMLSelectElement).value;
+          if (!this.selection) this.changeDraft({ ...this.draft, model: this.modelId });
+        }}>
           ${this.models.map(item => html`<option value=${item.id} ?selected=${item.id === this.modelId}>${item.label}</option>`)}
         </select></label>
         <div><span class="label">Data coverage</span>
@@ -321,7 +333,7 @@ export class ForecastLab extends LitElement {
         .modelLabel=${forecast ? this.modelLabel(forecast.model) : ""}
         .dark=${!!this.hass?.themes?.darkMode}></local-forecast-chart>` :
         html`<div class="empty">${data ? "No recorded data in this window. Try a different interval or entity." :
-          "Preview history or run a saved project to see its forecast."}</div>`}
+          "Choose a target entity, then preview its history or run a forecast."}</div>`}
       ${this.preview?.inputs.length ? html`<details><summary>Input coverage</summary>
         <ul>${this.preview.inputs.map(input => html`<li>${input.name}: ${input.history} historical and ${input.future} future intervals</li>`)}</ul>
       </details>` : nothing}
@@ -350,7 +362,7 @@ export class ForecastLab extends LitElement {
             <td>${percentage(row.wape)}</td><td>${percentage(row.coverage)}</td>
             <td>${amount(row.runtime_seconds, " s")}</td><td>${amount(row.peak_rss_mb, " MiB")}</td>
           </tr>`)}</tbody>
-        </table></div>` : html`<p class="hint muted">Compare installed models and seasonal baselines using the project's recorded history.</p>`}
+        </table></div>` : html`<p class="hint muted">Compare installed models and seasonal baselines using the selected entity’s recorded history.</p>`}
       ${this.accuracy?.count ? html`<p class="hint">Published forecasts · ${this.accuracy.count} scored intervals ·
         MAE ${amount(this.accuracy.mae, this.selection?.forecast?.unit ? " " + this.selection.forecast.unit : "")}</p>` : nothing}
     </section>`;
@@ -364,7 +376,7 @@ export class ForecastLab extends LitElement {
       <header><ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button><h1>Forecast Lab</h1></header>
       <section class="projects">
         <div class="toolbar"><h3>Projects</h3><button ?disabled=${disabled || !this.listing.engines.length}
-          @click=${() => this.perform("New project", () => this.select())}><ha-icon icon="mdi:plus"></ha-icon>New project</button></div>
+          @click=${() => this.perform("Opening quick analysis", () => this.select())}><ha-icon icon="mdi:plus"></ha-icon>Quick analysis</button></div>
         ${this.listing.projects.length ? html`<div class="project-row">${this.listing.projects.map(project =>
           html`<button aria-pressed=${selected?.id === project.id} ?disabled=${disabled}
             @click=${() => this.perform("Opening project", () => this.select(project))}>
@@ -379,18 +391,20 @@ export class ForecastLab extends LitElement {
           ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : nothing}
         </div>` : html`<div class="workspace">
           <div class="toolbar">
-            <div class="project-title"><h2>${selected?.settings.name ?? "New project"}</h2>
+            <div class="project-title"><h2>${selected?.settings.name ?? "Quick analysis"}</h2>
               ${selected ? html`<span class=${`status ${selected.status}`}>${statuses[selected.status] ?? selected.status}</span>` : nothing}
             </div>
             <div class="buttons">
-              <button class="primary" ?disabled=${disabled || !selected || this.dirty || !installed} @click=${this.run}>
+              <button class="primary" ?disabled=${disabled || !this.draft.target || !installed} @click=${this.run}>
                 <ha-icon icon="mdi:play"></ha-icon>Run forecast
               </button>
-              <button ?disabled=${disabled || !selected || this.dirty} @click=${this.compare}>
+              <button ?disabled=${disabled || !this.draft.target || !this.models.some(model => model.installed)} @click=${this.compare}>
                 <ha-icon icon="mdi:scale-balance"></ha-icon>Compare models
               </button>
             </div>
           </div>
+          ${!selected ? html`<p class="muted">Try a forecast or compare models here. Save a project to keep these settings and schedule updates.</p>`
+            : this.dirty ? html`<p class="muted">Runs use your edited settings. Save the project to apply them to scheduled forecasts.</p>` : nothing}
           ${this.error || selected?.error ? html`<p class="notice error" role="alert">${this.error || selected?.error}</p>` : nothing}
           ${this.busy ? html`<div class="notice activity"><span role="status">${this.job?.message || this.busy}…</span>
             ${this.job?.id ? html`<button @click=${async () => {
@@ -417,7 +431,9 @@ export class ForecastLab extends LitElement {
           .quarterHourAvailable=${this.quarterHourAvailable}
           @project-change=${(event: CustomEvent<Settings>) => this.changeDraft(event.detail)}
           @engine-change=${(event: CustomEvent<string>) => this.perform("Connecting to engine", async () => {
-            this.engineId = event.detail; await this.loadModels();
+            this.engineId = event.detail;
+            this.preview = this.forecast = this.evaluation = undefined;
+            await this.loadModels();
           })}
           @save-project=${this.save} @preview-project=${this.previewHistory} @delete-project=${this.removeProject}></local-forecast-settings>`}
       </main>

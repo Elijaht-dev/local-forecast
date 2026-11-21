@@ -14,7 +14,8 @@ export class ProjectSettings extends LitElement {
   };
   static styles = [controls, css`
     :host { display: block; }
-    form { padding: 16px 18px; display: grid; gap: 13px; }
+    form { padding: 16px 18px; }
+    fieldset { display: grid; gap: 13px; min-width: 0; padding: 0; margin: 0; border: 0; }
     h2 { margin-bottom: 2px; }
     .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .input { padding: 10px; margin: 10px 0; border: 1px solid var(--lf-border); border-radius: 7px; display: grid; gap: 8px; }
@@ -118,10 +119,11 @@ export class ProjectSettings extends LitElement {
       timestamp_key: "datetime", value_key: "value",
     }]);
     return html`<form class="box" @submit=${(event: Event) => { event.preventDefault(); this.emit("save-project"); }}>
-      <h2>Project settings</h2>
+      <fieldset ?disabled=${this.busy}>
+      <h2>${this.saved ? "Project settings" : "Forecast settings"}</h2>
       ${!this.saved && this.engines.length > 1 ? this.options("Engine", this.engineId,
         this.engines.map(e => [e.id, e.name]), id => this.emit("engine-change", id)) : nothing}
-      ${this.field("Name", project.name, name => this.updateSetting("name", name), true)}
+      ${this.saved ? this.field("Name", project.name, name => this.updateSetting("name", name), true) : nothing}
       ${this.entity("Target entity", project.target, "target", target => this.updateSetting("target", target))}
       ${this.options("Model", project.model, models, model => this.updateSetting("model", model))}
       <div class="pair">
@@ -129,7 +131,7 @@ export class ProjectSettings extends LitElement {
           step => this.updateSetting("step_minutes", Number(step)))}
         ${this.count("Horizon (hours)", "horizon_hours", 1, 168)}
         ${this.count("History (days)", "history_days", 1, 90)}
-        ${this.count("Refresh (minutes)", "refresh_minutes", 15, 1440)}
+        ${this.saved ? this.count("Refresh (minutes)", "refresh_minutes", 15, 1440) : nothing}
       </div>
       ${project.target && project.step_minutes === 60 && !this.quarterHourAvailable
         ? html`<small>${this.quarterHourAvailable === false
@@ -150,11 +152,15 @@ export class ProjectSettings extends LitElement {
           Solar forecast for the Energy dashboard
         </label>
       </details>
-      <button class="save primary" type="submit" ?disabled=${this.busy || !this.engineId}>Save project</button>
       <div class="actions">
         <button type="button" ?disabled=${this.busy || !project.target} @click=${() => this.emit("preview-project")}>Preview history</button>
         ${this.saved ? html`<button type="button" ?disabled=${this.busy} @click=${() => this.emit("delete-project")}>Delete project</button>` : nothing}
       </div>
+      ${this.saved ? nothing : this.field("Project name (for saving)", project.name, name => this.updateSetting("name", name), true)}
+      <button class="save ${this.saved ? "primary" : ""}" type="submit" ?disabled=${this.busy || !this.engineId || !project.target}>
+        ${this.saved ? "Save project" : "Save as project"}
+      </button>
+      </fieldset>
     </form>`;
   }
 }

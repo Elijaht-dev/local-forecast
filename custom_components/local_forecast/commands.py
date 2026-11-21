@@ -13,11 +13,15 @@ from homeassistant.helpers.service import async_register_admin_service
 
 from .client import EngineError
 from .const import DOMAIN, MODELS
-from .dataset import MIN_QUARTER_HOUR_OBSERVATIONS, build_dataset, quarter_hour_available
+from .dataset import MIN_QUARTER_HOUR_OBSERVATIONS, build_dataset, key_of, quarter_hour_available
 from .project import display_project, validate_project
 from .runtime import DomainData, Project
 
 SERVICE_SCHEMA = vol.Schema({vol.Required("entity_id"): cv.entity_id})
+INTERVAL_ERROR = (
+    f"The target needs {MIN_QUARTER_HOUR_OBSERVATIONS} observed 15-minute intervals. "
+    "Preview the history or choose hourly forecasts."
+)
 
 
 def state_of(hass: HomeAssistant) -> DomainData:
@@ -114,7 +118,11 @@ def required(message: dict, key: str):
     return message[key]
 
 
-async def lab_operation(hass: HomeAssistant, msg: dict):
+def analysis_settings(hass: HomeAssistant, msg: dict) -> dict:
+    return validate_project(hass, {**required(msg, "project"), "name": "Quick analysis"})
+
+
+async def lab_operation(hass: HomeAssistant, msg: dict, user_id: str):
     state = state_of(hass)
     op = msg["operation"]
     project_id = msg.get("project_id")
@@ -139,10 +147,7 @@ async def lab_operation(hass: HomeAssistant, msg: dict):
     if op == "save":
         config = validate_project(hass, required(msg, "project"))
         if config["step_minutes"] == 15 and not await quarter_hour_available(hass, config):
-            raise ValueError(
-                f"The target needs {MIN_QUARTER_HOUR_OBSERVATIONS} observed 15-minute intervals. "
-                "Preview the history or choose hourly forecasts."
-            )
+            raise ValueError(INTERVAL_ERROR)
         if project_id:
             if not project:
                 raise ValueError("Project is not loaded")
@@ -188,7 +193,7 @@ async def lab_operation(hass: HomeAssistant, msg: dict):
         project.notify()
         return describe(hass, project)
     if op == "preview":
-        config = validate_project(hass, required(msg, "project"))
+        config = analysis_settings(hass, msg)
         _, preview = await build_dataset(hass, project_id or "preview", config)
         supported = (
             preview["coverage"]["available"] >= MIN_QUARTER_HOUR_OBSERVATIONS
@@ -208,20 +213,31 @@ async def lab_operation(hass: HomeAssistant, msg: dict):
         return await engine.request(
             "DELETE" if op == "cancel" else "GET", f"/jobs/{required(msg, 'job_id')}"
         )
-    if project is None:
-        raise ValueError("Save the project before running it")
+    if project is None and (project_id or op in {"accuracy", "evaluation"}):
+        raise ValueError("Project is not loaded")
     if op == "accuracy":
         return await engine.request("GET", f"/projects/{project.id}/accuracy")
     if op == "evaluation":
         result = await engine.request("GET", f"/projects/{project.id}/backtest")
         return result if result and result.get("config_key") == project.key else None
+    if project is None:
+        config = analysis_settings(hass, msg)
+        # Reuse this administrator's recorded samples across quick runs on the same target.
+        dataset_id = "quick-" + key_of(engine_id, user_id, config["target"])
+    else:
+        config = project.settings
+        dataset_id = project.id
     use_inputs = msg.get("use_inputs", True)
     dataset, preview = await build_dataset(
         hass,
-        project.id,
-        project.settings,
+        dataset_id,
+        config,
         with_future=op == "run" and use_inputs,
     )
+    if project is None and config["step_minutes"] == 15 and (
+        preview["coverage"]["available"] < MIN_QUARTER_HOUR_OBSERVATIONS
+    ):
+        raise ValueError(INTERVAL_ERROR)
     if op == "run":
         return {
             **await engine.request(
@@ -229,8 +245,9 @@ async def lab_operation(hass: HomeAssistant, msg: dict):
                 "/forecasts",
                 {
                     "dataset": dataset,
-                    "model": msg.get("model", project.settings["model"]),
+                    "model": msg.get("model", config["model"]),
                     "use_inputs": use_inputs,
+                    "publish": False,
                 },
             ),
             "preview": preview,
@@ -290,7 +307,7 @@ async def lab_operation(hass: HomeAssistant, msg: dict):
 @websocket_api.async_response
 async def lab(hass, connection, msg):
     try:
-        result = await lab_operation(hass, msg)
+        result = await lab_operation(hass, msg, connection.user.id)
     except (EngineError, HomeAssistantError, ValueError, vol.Invalid) as error:
         connection.send_error(msg["id"], "local_forecast_error", str(error))
         return

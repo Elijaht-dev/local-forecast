@@ -158,6 +158,15 @@ async function previewHistory(lab, project) {
   throw new Error(`Expected imported hourly statistics for ${project.target}`);
 }
 
+async function finishJob(command, job) {
+  for (let attempt = 0; attempt < 60 && !["succeeded", "failed", "cancelled"].includes(job.state); attempt += 1) {
+    await sleep(1000);
+    job = await command("job", {job_id: job.id});
+  }
+  assert.equal(job.state, "succeeded", job.error);
+  return job.result;
+}
+
 const access = await auth();
 const config = await rest("/api/config", {access});
 assert.equal(config.location_name, "Local Forecast QA", "Refusing to seed a non-test HA instance");
@@ -198,6 +207,24 @@ try {
     solar: true, enabled: false,
     inputs: [{kind: "attribute", entity: "sensor.qa_weather_outlook", attribute: "outlook", history_entity: "sensor.qa_outdoor_temperature"}],
   };
+  const quick = (operation, extra = {}) => lab(operation, {engine_entry_id: engine, ...extra});
+  const draft = {...settings, name: "", model: "persistence", horizon_hours: 6};
+  const quickPreview = await previewHistory(quick, draft);
+  const quickForecast = await finishJob(quick, await quick("run", {project: draft}));
+  assert.equal(quickForecast.points.length, 6);
+  assert.equal(quickForecast.model, "persistence");
+  assert.equal(quickPreview.unit, quickForecast.unit);
+  const quickComparison = await finishJob(quick, await quick("backtest", {
+    project: draft, variants: [{model: "persistence"}, {model: "previous-day"}], folds: 2,
+  }));
+  assert(quickComparison.common_count > 0);
+  assert.deepEqual((await lab("list")).projects.map(item => item.id).sort(),
+    listing.projects.map(item => item.id).sort(), "Quick runs must not create a project");
+  const quickEntities = await send("config/entity_registry/list");
+  assert(!quickEntities.some(entry => entry.platform === "local_forecast" &&
+    entry.unique_id.startsWith(quickForecast.project_id)), "Quick runs must not register sensors");
+  await assert.rejects(quick("run", {project_id: "missing", project: draft}), /not loaded/);
+  await assert.rejects(quick("save", {project: draft}), /name/);
   const current = listing.projects.find(project => project.settings.name === settings.name);
   const {id} = current ?? await lab("save", {project: settings, engine_entry_id: engine});
   const project = (operation, extra = {}) => lab(operation, {project_id: id, ...extra});
@@ -208,6 +235,7 @@ try {
   assert.equal(hourlyPreview.quarter_hour_available, false, "Hourly statistics cannot supply 15-minute history");
   await assert.rejects(lab("save", {project: {...hourlyOnly, step_minutes: 15}, engine_entry_id: engine}),
     /observed 15-minute intervals/);
+  await assert.rejects(quick("run", {project: {...hourlyOnly, step_minutes: 15}}), /observed 15-minute intervals/);
   const saved = await publish(lab, id);
   assert(saved.forecast.points.some(point => point.p90 > point.p10), "Expected model quantiles");
   const registry = await send("config/entity_registry/list");
@@ -265,18 +293,12 @@ try {
   }
   assert.notEqual(refreshed.forecast?.id, saved.forecast.id, "Refresh must issue a new forecast");
 
-  const backtest = await project("backtest", {variants: [
+  const evaluation = await finishJob(project, await project("backtest", {variants: [
     {model: "timestral-5m"}, {model: "previous-week"},
-  ], folds: 2});
-  let job = backtest;
-  for (let attempt = 0; attempt < 60 && !["succeeded", "failed", "cancelled"].includes(job.state); attempt += 1) {
-    await sleep(1000);
-    job = await project("job", {job_id: backtest.id});
-  }
-  assert.equal(job.state, "succeeded", job.error);
-  assert(job.result.common_count > 0 && job.result.archived_input_folds === 0);
-  assert.deepEqual(await project("evaluation"), job.result, "Backtests should remain readable after the job finishes");
-  console.log(`HA workflow passed: ${preview.coverage.available} historical intervals, ${saved.forecast.points.length} predictions, ${Object.keys(solar[id].wh_hours).length} native solar hours, ${job.result.common_count} paired backtest observations`);
+  ], folds: 2}));
+  assert(evaluation.common_count > 0 && evaluation.archived_input_folds === 0);
+  assert.deepEqual(await project("evaluation"), evaluation, "Backtests should remain readable after the job finishes");
+  console.log(`HA workflow passed: quick forecast (${quickForecast.points.length} predictions) and comparison without a saved project; ${preview.coverage.available} historical intervals, ${saved.forecast.points.length} published predictions, ${Object.keys(solar[id].wh_hours).length} native solar hours, ${evaluation.common_count} paired backtest observations`);
 } finally {
   close();
 }
