@@ -17,6 +17,10 @@ On Raspberry Pi 4, use the built-in baselines with engine v0.1.0. Its PyTorch bu
 
 Use **Saved project** to search by project name, target name, or entity ID. The Lab remembers your workspace when you reload the same browser tab.
 
+## Dashboard card
+
+Publish a saved project in **Forecast Lab** to display it on a dashboard. The optional **Local Forecast Card** plots measured history and predictions, with uncertainty bands when available and energy summaries for solar projects. Install the card from its custom Marketplace repository, then select your project's forecast sensor in the dashboard editor. [Card installation and YAML example](https://github.com/Elijaht-dev/local-forecast-card#install-the-public-beta)
+
 ## Data and models
 
 The default forecast is hourly for 48 hours, refreshed every hour, from up to 28 days of history. Preview the target's history to enable 15-minute forecasts when Recorder has at least 32 usable 15-minute observations in the selected window. Eligible sensors can use hourly recorder statistics for older periods. Historical gaps stay missing. A cumulative meter forecasts the energy, water, or other increment per interval.
